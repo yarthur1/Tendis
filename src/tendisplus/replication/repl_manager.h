@@ -55,7 +55,7 @@ struct MPovStatus {
   // the binlog timestamp that has been applied(milliseconds)
   uint64_t binlogTs = 0;
   SCLOCK::time_point nextSchedTime;
-  SCLOCK::time_point lastSendBinlogTime;
+  SCLOCK::time_point lastSendBinlogTime;  // 发送binglog的时间
   std::shared_ptr<BlockingTcpClient> client;
   uint64_t clientId = 0;
   std::string slave_listen_ip;
@@ -166,7 +166,7 @@ class ReplManager {
                       const std::string& storeIdArg,
                       const std::string& slaveIpArg,
                       const std::string& slavePortArg);
-  bool registerIncrSync(asio::ip::tcp::socket sock,
+  bool registerIncrSync(asio::ip::tcp::socket sock,  // 断线后重新同步
                         const std::string& storeIdArg,
                         const std::string& dstStoreIdArg,
                         const std::string& binlogPosArg,
@@ -324,7 +324,7 @@ class ReplManager {
   std::vector<std::map<string, MPovFullPushStatus*>> _fullPushStatus;
 #else
   // GUARDED_BY(_mutex)
-  std::vector<std::map<uint64_t, std::unique_ptr<MPovStatus>>> _pushStatus;
+  std::vector<std::map<uint64_t, std::unique_ptr<MPovStatus>>> _pushStatus;  // clientid->
   std::vector<std::map<std::string, std::unique_ptr<MPovFullPushStatus>>>
     _fullPushStatus;
 #endif
@@ -334,22 +334,22 @@ class ReplManager {
   std::vector<std::unique_ptr<RecycleBinlogStatus>> _logRecycStatus;
 
   // master's pov, workerpool of pushing full backup
-  std::unique_ptr<WorkerPool> _fullPusher;
+  std::unique_ptr<WorkerPool> _fullPusher;  // 由slave触发
 
   // master's pov fullsync rate limiter
   std::unique_ptr<RateLimiter> _rateLimiter;
 
   // master's pov, workerpool of pushing incr backup
-  std::unique_ptr<WorkerPool> _incrPusher;
+  std::unique_ptr<WorkerPool> _incrPusher;  // 增量发送
 
   // master's pov, as its name
   bool _incrPaused;
 
   // slave's pov, workerpool of receiving full backup
-  std::unique_ptr<WorkerPool> _fullReceiver;
+  std::unique_ptr<WorkerPool> _fullReceiver;  // 全量同步接受文件
 
   // slave's pov, periodly check incr-sync status
-  std::unique_ptr<WorkerPool> _incrChecker;
+  std::unique_ptr<WorkerPool> _incrChecker;  // 增量同步的状态 线程数2？
 
   // master and slave's pov, log recycler
   std::unique_ptr<WorkerPool> _logRecycler;
@@ -358,7 +358,7 @@ class ReplManager {
 
   const std::string _dumpPath;
 
-  std::unique_ptr<std::thread> _controller;
+  std::unique_ptr<std::thread> _controller;  // controlRoutine()
 
   std::shared_ptr<PoolMatrix> _fullPushMatrix;
   std::shared_ptr<PoolMatrix> _incrPushMatrix;

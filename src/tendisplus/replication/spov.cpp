@@ -145,7 +145,7 @@ Status ReplManager::receiveFileDirectio(
     ;
   }
   while (remain) {
-    size_t curSize = std::min(remain, alignedBuf->bufSize);
+    size_t curSize = std::min(remain, alignedBuf->bufSize);  // 对齐buffer大小或者最后一点数据
     remain -= curSize;
     auto s = client->read(alignedBuf->buf, curSize, std::chrono::seconds(100));
     if (!s.ok()) {
@@ -165,7 +165,7 @@ Status ReplManager::receiveFileDirectio(
       writable_file->Close();
 
       writable_file =
-        openWritableFile(fullFileName, false, true);  // PosixWritableFile
+        openWritableFile(fullFileName, false, true);  // PosixWritableFile  reopen的作用
       if (writable_file == nullptr) {
         LOG(ERROR) << "openWritableFile failed:" << fullFileName;
         return {ErrorCodes::ERR_INTERNAL, "openWritableFile failed."};
@@ -210,7 +210,7 @@ void ReplManager::slaveStartFullsync(const StoreMeta& metaSnapshot) {
    */
   {
     std::lock_guard<std::mutex> lk(_mutex);
-    _syncStatus[metaSnapshot.id]->lastSyncTime = SCLOCK::time_point::min();
+    _syncStatus[metaSnapshot.id]->lastSyncTime = SCLOCK::time_point::min();  // 最小值意味着未设置
     _syncStatus[metaSnapshot.id]->lastBinlogTs = 0;
   }
   LocalSessionGuard sg(_svr.get());
@@ -229,7 +229,7 @@ void ReplManager::slaveStartFullsync(const StoreMeta& metaSnapshot) {
   auto store = std::move(expdb.value().store);
   INVARIANT(store != nullptr);
 
-  Status stopStatus = store->stop();
+  Status stopStatus = store->stop();  // 停止写入
   if (!stopStatus.ok()) {
     // there may be uncanceled transactions binding with the store
     LOG(WARNING) << "stop store:" << metaSnapshot.id
@@ -273,7 +273,7 @@ void ReplManager::slaveStartFullsync(const StoreMeta& metaSnapshot) {
 
   // 3) require a blocking-client
   client = std::move(
-    createClient(metaSnapshot,
+    createClient(metaSnapshot,  // slave连接master  每个kvstore对应一个连接?
                  _connectMasterTimeoutMs.load(std::memory_order_relaxed),
                  CLIENT_MASTER));
   if (client == nullptr) {
@@ -286,7 +286,7 @@ void ReplManager::slaveStartFullsync(const StoreMeta& metaSnapshot) {
   auto newMeta = metaSnapshot.copy();
   newMeta->replState = ReplState::REPL_TRANSFER;
   newMeta->binlogId = Transaction::TXNID_UNINITED;
-  changeReplState(*newMeta, false);
+  changeReplState(*newMeta, false);  // no persist
 
   // 4) read backupinfo from master
   // get binlogPos and filelist, other messages get from "backup_meta" file
@@ -319,14 +319,14 @@ void ReplManager::slaveStartFullsync(const StoreMeta& metaSnapshot) {
     return;
   }
 
-  auto flist = ebkInfo.value().getFileList();
+  auto flist = ebkInfo.value().getFileList();  // 获取文件list
 
   std::set<std::string> finishedFiles;
   while (true) {
     if (finishedFiles.size() == flist.size()) {
       break;
     }
-    Expected<std::string> s = client->readLine(std::chrono::seconds(10));
+    Expected<std::string> s = client->readLine(std::chrono::seconds(10));  // 文件名
     if (!s.ok()) {
       return;
     }
@@ -344,7 +344,7 @@ void ReplManager::slaveStartFullsync(const StoreMeta& metaSnapshot) {
       LOG(INFO) << "slaveStartFullsync create_directories:" << fileDir;
       filesystem::create_directories(fileDir);
     }
-    size_t fLength = flist.at(s.value());
+    size_t fLength = flist.at(s.value());  // 文件长度
     Status ret;
     if (_cfg->directIo) {
       ret = receiveFileDirectio(fullFileName, client, fLength);
@@ -404,7 +404,7 @@ void ReplManager::slaveStartFullsync(const StoreMeta& metaSnapshot) {
   }
 
   newMeta = metaSnapshot.copy();
-  newMeta->replState = ReplState::REPL_CONNECTED;
+  newMeta->replState = ReplState::REPL_CONNECTED;  // 文件传输完毕
   newMeta->binlogId = bkInfo.getBinlogPos();
   {
     std::lock_guard<std::mutex> lk(_mutex);
@@ -428,7 +428,7 @@ void ReplManager::slaveStartFullsync(const StoreMeta& metaSnapshot) {
     if (ss.ok()) {
       auto eReplLog = bcursor->nextV2();
       if (eReplLog.ok()) {
-        store->setBinlogTime(eReplLog.value().getTimestamp());
+        store->setBinlogTime(eReplLog.value().getTimestamp());  // 设置binlog time
       }
     }
   }
@@ -444,7 +444,7 @@ void ReplManager::slaveChkSyncStatus(const StoreMeta& metaSnapshot) {
     std::lock_guard<std::mutex> lk(_mutex);
     auto sessionId = _syncStatus[metaSnapshot.id]->sessionId;
     auto lastSyncTime = _syncStatus[metaSnapshot.id]->lastSyncTime;
-    if (sessionId == std::numeric_limits<uint64_t>::max()) {
+    if (sessionId == std::numeric_limits<uint64_t>::max()) {  // max需要重连
       return true;
     }
     if (lastSyncTime + std::chrono::seconds(gBinlogHeartbeatTimeout) <=
@@ -475,7 +475,7 @@ void ReplManager::slaveChkSyncStatus(const StoreMeta& metaSnapshot) {
     /* _myself may be nullptr because repl startup early than cluster */
     if (clusterMgr && clusterMgr->getClusterState() &&
         clusterMgr->getClusterState()->getMyselfNode() &&
-        !clusterMgr->getClusterState()->getMyselfNode()->isMasterOk()) {
+        !clusterMgr->getClusterState()->getMyselfNode()->isMasterOk()) {  // master不ok,无需重连
       LOG(ERROR) << "my master is marked as failed, no need reconn with: "
                  << metaSnapshot.syncFromHost << ","
                  << metaSnapshot.syncFromPort;
@@ -554,7 +554,7 @@ void ReplManager::slaveChkSyncStatus(const StoreMeta& metaSnapshot) {
   // some read/write/connect functions.
   // 3) master side will read +PONG before sending
   // new data, so there wont be any sticky packets.
-  Expected<uint64_t> expSessionId = network->client2Session(std::move(client));
+  Expected<uint64_t> expSessionId = network->client2Session(std::move(client));  // 根据client创建session
   if (!expSessionId.ok()) {
     errStr =
       errPrefix + "client2Session failed:" + expSessionId.status().toString();
@@ -571,7 +571,7 @@ void ReplManager::slaveChkSyncStatus(const StoreMeta& metaSnapshot) {
   }
 
   if (currSessId != std::numeric_limits<uint64_t>::max()) {
-    Status s = _svr->cancelSession(currSessId);
+    Status s = _svr->cancelSession(currSessId);  // 取消当前session
     LOG(INFO) << "sess:" << currSessId
               << ",discard status:" << (s.ok() ? "ok" : s.toString());
   }
@@ -596,7 +596,7 @@ void ReplManager::slaveSyncRoutine(uint32_t storeId) {
     INVARIANT_D(_syncStatus[storeId]->isRunning);
     _syncStatus[storeId]->isRunning = false;
     if (nextSched > _syncStatus[storeId]->nextSchedTime) {
-      _syncStatus[storeId]->nextSchedTime = nextSched;
+      _syncStatus[storeId]->nextSchedTime = nextSched;  // 更新调度的时间
     }
     _cv.notify_all();
   });
@@ -614,12 +614,12 @@ void ReplManager::slaveSyncRoutine(uint32_t storeId) {
   }
 
   if (metaSnapshot->replState == ReplState::REPL_CONNECT) {
-    slaveStartFullsync(*metaSnapshot);
+    slaveStartFullsync(*metaSnapshot);  // 开启全量同步流程
     nextSched = SCLOCK::now() + std::chrono::seconds(3);
     return;
   } else if (metaSnapshot->replState == ReplState::REPL_CONNECTED ||
              metaSnapshot->replState == ReplState::REPL_ERR) {
-    slaveChkSyncStatus(*metaSnapshot);
+    slaveChkSyncStatus(*metaSnapshot);  // check status? 只做重连
     nextSched = SCLOCK::now() + std::chrono::seconds(10);
     return;
   } else {
@@ -672,7 +672,7 @@ Status ReplManager::applyRepllogV2(Session* sess,
       binlogTs = msSinceEpoch();
     }
   } else {
-    auto binlog = applySingleTxnV2(
+    auto binlog = applySingleTxnV2(  // apply binlog
       sess, storeId, logKey, logValue, BinlogApplyMode::KEEP_BINLOG_ID);
     if (!binlog.ok()) {
       return binlog.status();

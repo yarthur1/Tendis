@@ -51,9 +51,9 @@ const uint32_t REPLLOGKEYV2_DBID = 0XFFFFFF01U;
 enum class RecordType {
   RT_INVALID,
   RT_META,       /* For catalog */
-  RT_KV,         /* For realtype in RecordValue */
-  RT_LIST_META,  /* For realtype in RecordValue */
-  RT_LIST_ELE,   /* For list subkey type in RecordKey and RecordValue */
+  RT_KV,         /* For realtype in RecordValue */  // string
+  RT_LIST_META,  /* For realtype in RecordValue */  // key的元信息
+  RT_LIST_ELE,   /* For list subkey type in RecordKey and RecordValue */  // key和element组成的键
   RT_HASH_META,  /* For realtype in RecordValue */
   RT_HASH_ELE,   /* For hash subkey type in RecordKey and RecordValue  */
   RT_SET_META,   /* For realtype in RecordValue */
@@ -65,7 +65,7 @@ enum class RecordType {
   RT_TTL_INDEX,  /* For ttl index  in RecordKey and RecordValue  */
   RT_DATA_META,  /* For key type in RecordKey */
   RT_TBITMAP_META,
-  RT_TBITMAP_ELE,
+  RT_TBITMAP_ELE,  // bitmap
 };
 
 uint8_t rt2Char(RecordType t);
@@ -99,7 +99,7 @@ bool isRealEleType(RecordType keyType, RecordType valueType);
 // CAS is a varint64, for cas cmd
 // PIECESIZE is a varint64, for very big value. Reversed, always 0
 // TOTALSIZE is varint64. Now it is always == UserValue.size().
-// UserValue is string.
+// UserValue is string.   比如存放metakey元素的个数
 // ********************************************************************
 
 class RecordKey {
@@ -128,19 +128,19 @@ class RecordKey {
   const std::string& getSecondaryKey() const;
   uint32_t getChunkId() const;
   uint32_t getDbId() const;
-
+  // SlotID | Type | DBID | PK | 0 | Version | SK | PK_LEN | Reserved
   // an encoded prefix until prefix and a padding zero.
   // mainly for prefix scan.
-  std::string prefixPk() const;
+  std::string prefixPk() const;  // 编码到subkey
 
-  std::string prefixSlotType() const;
+  std::string prefixSlotType() const;  // 编码到type
   std::string prefixChunkid() const;
 
   /*
   // an encoded prefix with db & type, with no padding zero.
   std::string prefixDbidType() const;
   */
-  static const std::string& prefixReplLogV2();
+  static const std::string& prefixReplLogV2();  // type不同
   static const std::string& prefixTTLIndex();
   static const std::string& prefixVersionMeta();
 
@@ -269,7 +269,7 @@ class RecordValue {
   static constexpr size_t MEMORY_USED_BESIDES_VALUE = sizeof(RecordType) +
     sizeof(uint64_t) + sizeof(uint64_t) + sizeof(uint64_t) + sizeof(int64_t) +
     sizeof(uint64_t) + sizeof(uint64_t) + sizeof(std::string);
-  uint64_t getEleCnt() const;
+  uint64_t getEleCnt() const;  // 获取元素个数
   RecordType getEleType() const;
   bool isBigKey(uint64_t valueSize, uint64_t eleCnt) const;
 
@@ -293,7 +293,7 @@ class RecordValue {
   // TODO(vinchen) it would be useful for append and bitmap
   // the whole value size, maybe > _value.size()
   uint64_t _totalSize;
-  std::string _value;
+  std::string _value;  // 元素个数存放在string中，如何编码?
 };
 
 class Record {
@@ -363,11 +363,11 @@ class ReplLogKeyV2 {
   static constexpr size_t BINLOG_SIZE = sizeof(uint64_t);
 
  private:
-  uint64_t _binlogId;
+  uint64_t _binlogId;  // key为binlog
   std::string _version;
 };
 
-class ReplLogValueEntryV2 {
+class ReplLogValueEntryV2 {  // 一个binlog对应多个ReplLogValueEntryV2
  public:
   ReplLogValueEntryV2();
   ReplLogValueEntryV2(const ReplLogValueEntryV2&) = default;
@@ -411,7 +411,7 @@ class ReplLogValueEntryV2 {
   std::string _val;
 };
 
-class ReplLogValueV2 {
+class ReplLogValueV2 {  // 包含多条命令
  public:
   ReplLogValueV2();
   ReplLogValueV2(const ReplLogValueV2&) = delete;
@@ -454,7 +454,7 @@ class ReplLogValueV2 {
   uint64_t getVersionEp() const {
     return _versionEp;
   }
-  Expected<std::vector<ReplLogValueEntryV2>> getLogList() const;
+  Expected<std::vector<ReplLogValueEntryV2>> getLogList() const;  // 解码_data中的数据
   const std::string& getCmd() const {
     return _cmdStr;
   }
@@ -471,14 +471,14 @@ class ReplLogValueV2 {
  private:
   uint32_t _chunkId;
   ReplFlag _flag;
-  uint64_t _txnId;
+  uint64_t _txnId;  // val中txnid
   uint64_t _timestamp;
   uint64_t _versionEp;
   std::string _cmdStr;
   // NOTE(vinchen) : take care about "_data", the caller should guarantee the
   // memory is ok;
   // printer to the RecordValue.getValue().c_str()
-  const uint8_t* _data;
+  const uint8_t* _data;  // 保存 ReplLogValueEntryV2
   size_t _dataSize;
 };
 
@@ -491,7 +491,7 @@ class ReplLogRawV2 {
   ReplLogRawV2(const std::string& key, const std::string& value);
   explicit ReplLogRawV2(const Record& record);
   ReplLogRawV2(std::string&& key, std::string&& value);
-  uint64_t getBinlogId();
+  uint64_t getBinlogId();  // 从key中提取
   uint64_t getVersionEp();
   uint64_t getTimestamp();
   uint32_t getChunkId();
@@ -507,7 +507,7 @@ class ReplLogRawV2 {
   std::string _val;
 };
 
-class ReplLogV2 {
+class ReplLogV2 {  // 代表一个binlog
  public:
   using KV = std::pair<std::string, std::string>;
   ReplLogV2() = delete;
@@ -538,7 +538,7 @@ class ReplLogV2 {
  private:
   ReplLogKeyV2 _key;
   ReplLogValueV2 _val;
-  std::vector<ReplLogValueEntryV2> _entrys;
+  std::vector<ReplLogValueEntryV2> _entrys;  // 从ReplLogValueV2中解析出
 };
 
 enum class BinlogFlag {
@@ -593,7 +593,7 @@ class BinlogWriter {
   uint32_t _curCnt;
   uint32_t _maxCnt;
   BinlogFlag _flag;
-  std::stringstream _ss;
+  std::stringstream _ss;  // 字符流
 };
 
 class BinlogReader {

@@ -988,7 +988,7 @@ void NetSession::drainReqNet() {
     });
 }
 
-void NetSession::processReq() {
+void NetSession::processReq() {  // 命令处理
   bool continueSched = true;
   if (_args.size()) {
     _ctx->setProcessPacketStart(nsSinceEpoch());

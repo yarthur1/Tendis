@@ -142,7 +142,7 @@ class RocksTxn : public Transaction {
   // NOTE(deyukong): not owned by me
   RocksKVStore* _store;
 
-  std::vector<ReplLogValueEntryV2> _replLogValues;
+  std::vector<ReplLogValueEntryV2> _replLogValues;  // 保存binlog
 
   // if rollback/commit has been explicitly called
   bool _done;
@@ -158,7 +158,7 @@ class RocksTxn : public Transaction {
 
 // NOTE(deyukong): RocksOptTxn does not guarantee thread-safety
 // Do not use one RocksOptTxn to do parallel things.
-class RocksOptTxn : public RocksTxn {
+class RocksOptTxn : public RocksTxn {  // 乐观事务
  public:
   RocksOptTxn(RocksKVStore* store,
               uint64_t txnId,
@@ -212,7 +212,7 @@ class RocksWBTxn : public RocksTxn {
   // Transaction API
   // put data into default column family
   rocksdb::Status put(const std::string& key, const std::string& val) final;
-  rocksdb::Status put(rocksdb::ColumnFamilyHandle* columnFamily,
+  rocksdb::Status put(rocksdb::ColumnFamilyHandle* columnFamily,  // 写到writebatch
                       const std::string& key,
                       const std::string& val) final;
   rocksdb::Status get(const rocksdb::ReadOptions& options,
@@ -310,7 +310,7 @@ class RocksKVStore : public KVStore {
   // [nullptr, nullptr] -> [-inf, +inf]
   Status compactRange(ColumnFamilyNumber cf,
                       const std::string* begin,
-                      const std::string* end) override;
+                      const std::string* end) override;  // compaction 指定的范围?
   Status fullCompact() override;
   void bgCompact() override;
 
@@ -371,7 +371,7 @@ class RocksKVStore : public KVStore {
     uint32_t flag = 0) final;
   Expected<uint64_t> flush(Session* sess, uint64_t nextBinlogid) final;
 
-  Expected<BackupInfo> backup(const std::string&,
+  Expected<BackupInfo> backup(const std::string&,   // rocksdb checkpoint
                               KVStore::BackupMode,
                               BinlogVersion binlogVersion) final;
   Expected<std::string> restoreBackup(const std::string& dir) final;
@@ -479,7 +479,7 @@ class RocksKVStore : public KVStore {
   rocksdb::Options defaultColumnOptions();
   Expected<bool> deleteBinlog(uint64_t start);
   void initRocksProperties();
-  Expected<std::string> saveBackupMeta(const std::string& dir,
+  Expected<std::string> saveBackupMeta(const std::string& dir,  // backup_meta
                                        BackupInfo* result);
   Expected<std::string> loadCopy(const std::string& dir);
   Expected<std::string> copyCkpt(const std::string& dir);
@@ -526,7 +526,7 @@ class RocksKVStore : public KVStore {
   // push _highestVisible forward.
   uint64_t _nextBinlogSeq;  // high water level for binlog id
   // <txnId, <commit_or_not, binlogId>>
-  std::unordered_map<uint64_t, std::pair<bool, uint64_t>> _aliveTxns;
+  std::unordered_map<uint64_t, std::pair<bool, uint64_t>> _aliveTxns;  // txnid ->
 
   // As things run parallel, there will be false-holes in _aliveBinlogs.
   // Fortunely, when _aliveBinlogs.begin() changes from uncommitted to

@@ -71,7 +71,7 @@ Expected<BinlogResult> masterSendBinlogV2(
   INVARIANT(store != nullptr);
   BinlogResult br{binlogPos, msSinceEpoch()};
   // NOTE(takenliu): check eariler only for performance.
-  if (!needHeartBeart && binlogPos >= store->getHighestBinlogId()) {
+  if (!needHeartBeart && binlogPos >= store->getHighestBinlogId()) {  // HighestBinlogId
     return br;
   }
   sg.getSession()->setArgs({"mastersendlog",
@@ -141,7 +141,7 @@ Expected<BinlogResult> masterSendBinlogV2(
     }
     // keep the client alive
     Command::fmtMultiBulkLen(ss2, 3);
-    Command::fmtBulk(ss2, "binlog_heartbeat");
+    Command::fmtBulk(ss2, "binlog_heartbeat");  // heatheat
     Command::fmtBulk(ss2, std::to_string(dstStoreId));
     /* add timestamp which binlog_heartbeat created */
     Command::fmtBulk(ss2, std::to_string(br.binlogTs));
@@ -337,13 +337,13 @@ Expected<BinlogResult> applySingleTxnV2(Session* sess,
 
   std::unique_ptr<Transaction> txn = std::move(ptxn.value());
 
-  auto key = ReplLogKeyV2::decode(logKey);
+  auto key = ReplLogKeyV2::decode(logKey);  // binlog key
   if (!key.ok()) {
     LOG(ERROR) << "ReplLogKeyV2::decode failed:" << key.status().toString();
     return key.status();
   }
 
-  auto value = ReplLogValueV2::decode(logValue);
+  auto value = ReplLogValueV2::decode(logValue);  // binlog val
   if (!value.ok()) {
     return value.status();
   }
@@ -362,7 +362,7 @@ Expected<BinlogResult> applySingleTxnV2(Session* sess,
     offset += size;
 
     timestamp = entry.value().getTimestamp();
-    auto s = txn->applyBinlog(entry.value());
+    auto s = txn->applyBinlog(entry.value());  // applyBinlog
     if (!s.ok()) {
       return s;
     }
@@ -396,7 +396,7 @@ Expected<BinlogResult> applySingleTxnV2(Session* sess,
     }
     binlogId = txn->getBinlogId();
   }
-  Expected<uint64_t> expCmit = txn->commit();
+  Expected<uint64_t> expCmit = txn->commit();  // 如何提交
   if (!expCmit.ok()) {
     return expCmit.status();
   }

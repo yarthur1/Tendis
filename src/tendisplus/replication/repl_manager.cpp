@@ -124,7 +124,7 @@ Status ReplManager::stopStore(uint32_t storeId) {
 
 Status ReplManager::startup() {
   std::lock_guard<std::mutex> lk(_mutex);
-  Catalog* catalog = _svr->getCatalog();
+  Catalog* catalog = _svr->getCatalog();  // catalog作用
   INVARIANT(catalog != nullptr);
 
   for (uint32_t i = 0; i < _svr->getKVStoreCount(); i++) {
@@ -231,7 +231,7 @@ Status ReplManager::startup() {
     Status status;
 
     if (isOpen) {
-      if (_syncMeta[i]->syncFromHost == "") {
+      if (_syncMeta[i]->syncFromHost == "") {  // 没有设置master
         status = _svr->setStoreMode(store, KVStore::StoreMode::READ_WRITE);
       } else {
         status = _svr->setStoreMode(store, KVStore::StoreMode::REPLICATE_ONLY);
@@ -239,7 +239,7 @@ Status ReplManager::startup() {
         // NOTE(vinchen): the binlog of slave is sync from master,
         // when the slave startup, _syncMeta[i]->binlogId should depend
         // on store->getHighestBinlogId();
-        _syncMeta[i]->binlogId = store->getHighestBinlogId();
+        _syncMeta[i]->binlogId = store->getHighestBinlogId();  // slave binlogid
       }
       if (!status.ok()) {
         return status;
@@ -249,7 +249,7 @@ Status ReplManager::startup() {
       if (!efileSeq.ok()) {
         return efileSeq.status();
       }
-      fileSeq = efileSeq.value();
+      fileSeq = efileSeq.value();  // 已经dump的文件seq
     }
 
     auto recBinlogStat = std::unique_ptr<RecycleBinlogStatus>(
@@ -517,11 +517,11 @@ void ReplManager::controlRoutine() {
       // different pools.
       if (_syncMeta[i]->replState == ReplState::REPL_CONNECT) {
         _syncStatus[i]->isRunning = true;
-        _fullReceiver->schedule([this, i]() { slaveSyncRoutine(i); });
+        _fullReceiver->schedule([this, i]() { slaveSyncRoutine(i); });  // slave开启全量同步
       } else if (_syncMeta[i]->replState == ReplState::REPL_CONNECTED ||
-                 _syncMeta[i]->replState == ReplState::REPL_ERR) {
+                 _syncMeta[i]->replState == ReplState::REPL_ERR) {  //
         _syncStatus[i]->isRunning = true;
-        _incrChecker->schedule([this, i]() { slaveSyncRoutine(i); });
+        _incrChecker->schedule([this, i]() { slaveSyncRoutine(i); });  // 检测是否重连
       } else if (_syncMeta[i]->replState == ReplState::REPL_TRANSFER) {
         LOG(FATAL) << "sync store:" << i
                    << " REPL_TRANSFER should not be visitable";
@@ -546,7 +546,7 @@ void ReplManager::controlRoutine() {
         mpov.second->isRunning = true;
         uint64_t clientId = mpov.first;
         _incrPusher->schedule(
-          [this, i, clientId]() { masterPushRoutine(i, clientId); });
+          [this, i, clientId]() { masterPushRoutine(i, clientId); });  // 增量发送binlog,全量同步是在哪儿触发
       }
     }
     return doSth;
@@ -854,7 +854,7 @@ void ReplManager::recycleBinlog(uint32_t storeId) {
     }
     DLOG(INFO) << "store:" << storeId << " "
                << _logRecycStatus[storeId]->toString();
-    auto s = kvstore->truncateBinlogV2(fs, start, end, dump, maxWriteLen);
+    auto s = kvstore->truncateBinlogV2(fs, start, end, dump, maxWriteLen);  // 截断binlog
     if (!s.ok()) {
       LOG(ERROR) << "kvstore->truncateBinlogV2 store:" << storeId
                  << "failed:" << s.status().toString();

@@ -129,10 +129,10 @@ void ReplManager::masterPushRoutine(uint32_t storeId, uint64_t clientId) {
   if (_cfg->aofEnabled &&
       (clientType == MPovClientType::respClient || _cfg->psyncEnabled)) {
     ret = masterSendAof(
-      client.get(), storeId, dstStoreId, binlogPos, needHeartbeat, _svr, _cfg);
+      client.get(), storeId, dstStoreId, binlogPos, needHeartbeat, _svr, _cfg);  // redis client
   } else {
     ret = masterSendBinlogV2(
-      client.get(), storeId, dstStoreId, binlogPos, needHeartbeat, _svr, _cfg);
+      client.get(), storeId, dstStoreId, binlogPos, needHeartbeat, _svr, _cfg);  // 发送binlog
   }
   if (!ret.ok()) {
     LOG(WARNING) << "masterSendBinlog to client:" << client->getRemoteRepr()
@@ -271,7 +271,7 @@ bool ReplManager::registerIncrSync(asio::ip::tcp::socket sock,
   // 1.recycleBinlog use firstPos, and incrSync use binlogPos+1
   // 2.slave do command slaveof master, master do flushall
   //   and truncateBinlogV2, slave send binlogpos will smaller than master.
-  if (firstPos > (binlogPos + 1) && firstPos != lastFlushBinlogId) {
+  if (firstPos > (binlogPos + 1) && firstPos != lastFlushBinlogId) {  // 传入的binlog已经无效
     std::stringstream ss;
     ss << "-ERR invalid binlogPos,storeId:" << storeId
        << ",master firstPos:" << firstPos << ",slave binlogPos:" << binlogPos
@@ -400,7 +400,7 @@ void ReplManager::supplyFullSyncRoutine(
     LOG(ERROR) << "getDb failed:" << expdb.status().toString();
     return;
   }
-  auto store = std::move(expdb.value().store);
+  auto store = std::move(expdb.value().store);  // store 快照
   INVARIANT(store != nullptr);
 
   if (!store->isRunning()) {

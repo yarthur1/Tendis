@@ -482,7 +482,7 @@ Status ServerEntry::startup(const std::shared_ptr<ServerParams>& cfg) {
   Command::changeCommand(gMappingCmdList, "mapping");
 
   // catalog init
-  auto catalog = std::make_unique<Catalog>(
+  auto catalog = std::make_unique<Catalog>(  // catalog的作用?
     std::move(std::unique_ptr<KVStore>(
       new RocksKVStore(CATALOG_NAME,
                        cfg,
@@ -531,7 +531,7 @@ Status ServerEntry::startup(const std::shared_ptr<ServerParams>& cfg) {
                                      cfg->rocksBlockcacheNumShardBits,
                                      cfg->rocksStrictCapacityLimit);
   if (cfg->rocksRowcacheMB > 0) {
-    _rowCache = rocksdb::NewLRUCache(cfg->rocksRowcacheMB * 1024 * 1024LL);
+    _rowCache = rocksdb::NewLRUCache(cfg->rocksRowcacheMB * 1024 * 1024LL);  // rowcache作用?
   }
   if (cfg->rocksBlobcacheInBlockcache) {
     _blobCache = _blockCache;
@@ -1085,7 +1085,7 @@ void ServerEntry::replyMonitors(Session* sess) {
   }
 }
 
-bool ServerEntry::processRequest(Session* sess) {
+bool ServerEntry::processRequest(Session* sess) {  // 命令处理
   if (!_isRunning.load(std::memory_order_relaxed)) {
     return false;
   }
@@ -1114,7 +1114,7 @@ bool ServerEntry::processRequest(Session* sess) {
       std::vector<std::string> args = ns->getArgs();
       // we have called precheck, it should have 4 args
       INVARIANT(args.size() == 4);
-      _replMgr->supplyFullSync(ns->borrowConn(), args[1], args[2], args[3]);
+      _replMgr->supplyFullSync(ns->borrowConn(), args[1], args[2], args[3]);  // 由slave触发
       ++_serverStat.syncFull;
       return false;
     } else if (expCmdName == "incrsync") {

@@ -164,7 +164,7 @@ class EpochMeta {
 };
 
 // store meta
-class Catalog {
+class Catalog {  // KVStore的元信息 比如读写模式 master或者slave？
  public:
   Catalog(std::unique_ptr<KVStore> store,
           uint32_t kvStoreCount,

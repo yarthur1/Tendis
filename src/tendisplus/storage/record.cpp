@@ -34,7 +34,7 @@ const char* ReplOpStr[static_cast<int>(ReplOp::REPL_OP_MAX)] = {
   "del_files_include_end",
   "del_files_exclude_end"};
 
-bool isDataMetaType(RecordType t) {
+bool isDataMetaType(RecordType t) {  // 元信息的key
   switch (t) {
     case RecordType::RT_HASH_META:
     case RecordType::RT_LIST_META:
@@ -264,7 +264,7 @@ RecordKey::RecordKey(uint32_t chunkId,
     _version(version),
     _fmtVsn(0) {}
 
-void RecordKey::encodePrefixPk(std::vector<uint8_t>* arr) const {
+void RecordKey::encodePrefixPk(std::vector<uint8_t>* arr) const {  // 编码到subkey
   // --------key encoding
   // CHUNKID
   for (size_t i = 0; i < sizeof(_chunkId); ++i) {
@@ -286,7 +286,7 @@ void RecordKey::encodePrefixPk(std::vector<uint8_t>* arr) const {
   // NOTE(deyukong): 0 never exists in hex string.
   // a padding 0 avoids prefixes intersect with
   // each other in physical space
-  arr->push_back(0);
+  arr->push_back(0);  // 插入0
 
   // NOTE(vinchen): version of key, temporarily useless
   // delSubkeysRange use _version=UINT64_MAX as upper_bound
@@ -306,7 +306,7 @@ uint32_t RecordKey::getDbId() const {
 std::string RecordKey::prefixPk() const {
   std::vector<uint8_t> key;
   key.reserve(128);
-  encodePrefixPk(&key);
+  encodePrefixPk(&key);  // 编码到subkey
   return std::string(reinterpret_cast<const char*>(key.data()), key.size());
 }
 
@@ -468,7 +468,7 @@ Expected<RecordKey> RecordKey::decode(const std::string& key) {
     return {ErrorCodes::ERR_DECODE, "invalid recordkey"};
   }
 
-  offset = getHdrSize();
+  offset = getHdrSize();  // 固定为9
   auto chunkid = decodeChunkId(key);
   auto type = decodeType(key);
   auto dbid = decodeDbId(key);
@@ -623,7 +623,7 @@ RecordValue::RecordValue(double v, RecordType type)
 
   std::string str;
   str.insert(str.end(), d.begin(), d.end());
-  _value = std::move(str);
+  _value = std::move(str);  // double类型
   _totalSize = -1;
 }
 
@@ -738,7 +738,7 @@ std::string RecordValue::encode() const {
   // _typeForMeta
   output[offset++] = rt2Char(_type);
 
-  if (isDataMetaType(_type)) {
+  if (isDataMetaType(_type)) {  // 是元数据key的val才有ttl，version等字段，如果非元数据key则为0
     // TTL
     offset += varintEncodeBuf(ptr + offset, size - offset, _ttl);
 
@@ -777,7 +777,7 @@ std::string RecordValue::encode() const {
 
     offset = minSize();
   }
-  output.resize(offset);
+  output.resize(offset);  // output offset resize
 
   // Value
   if (_value.size() > 0) {
@@ -1099,7 +1099,7 @@ RecordType RecordValue::getEleType() const {
   return RecordType::RT_DATA_META;
 }
 
-uint64_t RecordValue::getEleCnt() const {
+uint64_t RecordValue::getEleCnt() const {  // 获取元素个数
   INVARIANT_D(isDataMetaType(_type));
 
   switch (_type) {

@@ -157,8 +157,8 @@ RocksTxn::~RocksTxn() {
 }
 
 std::unique_ptr<RepllogCursorV2> RocksTxn::createRepllogCursorV2(
-  uint64_t begin, bool ignoreReadBarrier) {
-  uint64_t hv = 0;
+  uint64_t begin, bool ignoreReadBarrier) {  // 默认false
+  uint64_t hv = 0;  // max可见的binglogid
   if (!ignoreReadBarrier) {
     hv = _store->getHighestBinlogId();
   } else {
@@ -184,7 +184,7 @@ std::unique_ptr<RepllogCursorV2> RocksTxn::createRepllogCursorV2(
 
 std::unique_ptr<TTLIndexCursor> RocksTxn::createTTLIndexCursor(uint64_t until) {
   RecordKey upper(TTLIndex::CHUNKID + 1, 0, RecordType::RT_INVALID, "", "");
-  std::string upperBound = upper.prefixChunkid();
+  std::string upperBound = upper.prefixChunkid();  // 只返回chunkid的string
   auto cursor =
     createCursor(ColumnFamilyNumber::ColumnFamily_Default, &upperBound);
   return std::make_unique<TTLIndexCursor>(std::move(cursor), until);
@@ -271,7 +271,7 @@ Expected<uint64_t> RocksTxn::commit() {
       INVARIANT_D(binlogTxnId == _txnId ||
                   binlogTxnId == Transaction::TXNID_UNINITED);
     }
-    _store->markCommitted(_txnId, binlogTxnId);
+    _store->markCommitted(_txnId, binlogTxnId);  // 函数退出时标记binlogTxnId
 
 #ifdef TENDIS_DEBUG
     // NOTE(takenliu) for test case psyncEnabled,
@@ -301,7 +301,7 @@ Expected<uint64_t> RocksTxn::commit() {
         std::to_string(_replLogValues.size());
     }
 
-    _store->assignBinlogIdIfNeeded(this);
+    _store->assignBinlogIdIfNeeded(this);  // commit分配binlogid
     INVARIANT_D(_binlogId != Transaction::TXNID_UNINITED);
 
     uint32_t chunkId = getChunkId();
@@ -336,7 +336,7 @@ Expected<uint64_t> RocksTxn::commit() {
     binlogTxnId = _txnId;
     // put binlog into binlog_column_family
     rocksdb::ColumnFamilyHandle* handle = _store->getBinlogColumnFamilyHandle();
-    auto s = put(handle, key.encode(), val.encode(_replLogValues));
+    auto s = put(handle, key.encode(), val.encode(_replLogValues));  // encode _replLogValues 调用 _txn->Put(
     if (!s.ok()) {
       binlogTxnId = Transaction::TXNID_UNINITED;
       return _store->handleRocksdbError(s);
@@ -349,10 +349,10 @@ Expected<uint64_t> RocksTxn::commit() {
 
   TEST_SYNC_POINT("RocksTxn::commit()::1");
   TEST_SYNC_POINT("RocksTxn::commit()::2");
-  auto s = txnCommit();
+  auto s = txnCommit();  // 事务提交
   if (s.ok()) {
     return _txnId;
-  } else {
+  } else {  // 如果提交失败，binglog无需回滚吗？binglog put也在同一个事务中
     binlogTxnId = Transaction::TXNID_UNINITED;
     if (s.IsBusy() || s.IsTryAgain()) {
       return {ErrorCodes::ERR_COMMIT_RETRY, s.ToString()};
@@ -441,7 +441,7 @@ Status RocksTxn::setKV(const std::string& key,
 
   RESET_PERFCONTEXT();
   // put data into default column family
-  auto s = put(key, val);
+  auto s = put(key, val);  // 写到rocksdb 默认列簇 key val已经编码过了
   if (!s.ok()) {
     return _store->handleRocksdbError(s);
   }
@@ -449,7 +449,7 @@ Status RocksTxn::setKV(const std::string& key,
   if (_store->enableRepllog()) {
     INVARIANT_D(_store->dbId() != CATALOG_NAME);
     setChunkId(RecordKey::decodeChunkId(key));
-    if (_replLogValues.size() == std::numeric_limits<uint16_t>::max()) {
+    if (_replLogValues.size() == std::numeric_limits<uint16_t>::max()) {  // 条数太多
       // TODO(vinchen): if too large, it can flush to rocksdb first,
       // and get another binlogid using assignBinlogIdIfNeeded()
       auto eKey = RecordKey::decode(key);
@@ -461,7 +461,7 @@ Status RocksTxn::setKV(const std::string& key,
       }
     }
 
-    ReplLogValueEntryV2 logVal(
+    ReplLogValueEntryV2 logVal(  // 创建replog
       ReplOp::REPL_OP_SET, ts ? ts : msSinceEpoch(), key, val);
     // TODO(vinchen): maybe OOM
     _replLogValues.emplace_back(std::move(logVal));
@@ -601,7 +601,7 @@ Status RocksTxn::migrate(const std::string& logKey, const std::string& logVal) {
   return {ErrorCodes::ERR_OK, ""};
 }
 
-Status RocksTxn::applyBinlog(const ReplLogValueEntryV2& logEntry) {
+Status RocksTxn::applyBinlog(const ReplLogValueEntryV2& logEntry) {  // applyBinlog
   if (!_replOnly) {
     return {ErrorCodes::ERR_INTERNAL, "txn is not replOnly or migrationOnly"};
   }
@@ -800,8 +800,8 @@ void RocksOptTxn::ensureTxn() {
   // refer to rocks' document, even if set_snapshot == true,
   // the uncommitted data in this txn's writeBatch are still
   // visible to reads, and this behavior is what we need.
-  txnOpts.set_snapshot = true;
-  auto db = _store->getUnderlayerOptDB();
+  txnOpts.set_snapshot = true;  // 涉及修改的key加锁
+  auto db = _store->getUnderlayerOptDB();  // 乐观事务db
   if (!db) {
     LOG(FATAL) << "BUG: rocksKVStore underLayerDB nil";
   }
@@ -865,7 +865,7 @@ RocksWBTxn::RocksWBTxn(RocksKVStore* store,
                        bool replOnly,
                        std::shared_ptr<BinlogObserver> ob,
                        Session* sess)
-  : RocksTxn(store, txnId, replOnly, ob, sess, TxnMode::TXN_WB),
+  : RocksTxn(store, txnId, replOnly, ob, sess, TxnMode::TXN_WB),  // writebatch txn
     _snapshot(nullptr) {
   // NOTE(deyukong): the rocks-layer's snapshot should be opened in
   // RocksKVStore::createTransaction, with the guard of RocksKVStore::_mutex,
@@ -949,7 +949,7 @@ rocksdb::Status RocksWBTxn::del(rocksdb::ColumnFamilyHandle* columnFamily,
 
 rocksdb::Status RocksWBTxn::txnCommit() {
   TENDIS_ROCKSDB_LATENCY_RECORD(
-    _store->getBaseDB()->Write(_writeOpts, _writeBatch->GetWriteBatch()),
+    _store->getBaseDB()->Write(_writeOpts, _writeBatch->GetWriteBatch()),  // db生成一个事务并自动commit
     size_t(0),
     RocksdbLatencyType::RLT_COMMIT);
 }
@@ -1463,7 +1463,7 @@ bool RocksKVStore::isPaused() const {
 }
 
 bool RocksKVStore::isEmpty(bool ignoreBinlog) const {
-  auto ptxn = const_cast<RocksKVStore*>(this)->createTransaction(nullptr);
+  auto ptxn = const_cast<RocksKVStore*>(this)->createTransaction(nullptr);  // 创建txn
   if (!ptxn.ok()) {
     return false;
   }
@@ -1496,7 +1496,7 @@ bool RocksKVStore::isEmpty(bool ignoreBinlog) const {
   }
 }
 
-Status RocksKVStore::pause() {
+Status RocksKVStore::pause() {  // 需要保证没有alive txn
   std::lock_guard<std::mutex> lk(_mutex);
   if (_aliveTxns.size() != 0) {
     return {ErrorCodes::ERR_INTERNAL,
@@ -1561,7 +1561,7 @@ Status RocksKVStore::setMode(StoreMode mode) {
   }
   uint64_t oldSeq = _nextTxnSeq;
   switch (mode) {
-    case KVStore::StoreMode::READ_WRITE:
+    case KVStore::StoreMode::READ_WRITE:  // slave提升master
       INVARIANT_D(_mode == KVStore::StoreMode::REPLICATE_ONLY);
       // in READ_WRITE mode, the binlog's key is identified by _nextTxnSeq,
       // in REPLICATE_ONLY mode, the binlog is same as the sync-source's
@@ -1627,7 +1627,7 @@ int64_t RocksKVStore::dumpBinlogV2(std::ofstream* fs, const ReplLogRawV2& log) {
   return written;
 }
 
-Expected<bool> RocksKVStore::deleteBinlog(uint64_t start) {
+Expected<bool> RocksKVStore::deleteBinlog(uint64_t start) {  // 从start开始删除
   auto ptxn = createTransaction(nullptr);
   if (!ptxn.ok()) {
     LOG(ERROR) << "deleteBinlog create txn failed:" << ptxn.status().toString();
@@ -1958,7 +1958,7 @@ std::shared_ptr<KeyCollectorFactory> NewKeyCollectorFactory() {
 
 void RocksKVStore::bgCompact() {
   rocksdb::TablePropertiesCollection props;
-  auto s = getBaseDB()->GetPropertiesOfAllTables(&props);  // default cf;
+  auto s = getBaseDB()->GetPropertiesOfAllTables(&props);  // default cf; 获取所有sst file
   if (!s.ok()) {
     LOG(WARNING) << "get table properties failed. dbid:" << dbId()
                  << " reason: " << s.ToString();
@@ -1970,9 +1970,9 @@ void RocksKVStore::bgCompact() {
   }
 
   // select at most 1% data
-  size_t maxSuggestFiles = props.size() > 1024 ? (props.size() >> 10) : 1;
+  size_t maxSuggestFiles = props.size() > 1024 ? (props.size() >> 10) : 1;  // 不超过1/1000
   size_t now = sinceEpoch();
-  size_t forceCompactAge = 2 * 24 * 60 * 60;  // two days
+  size_t forceCompactAge = 2 * 24 * 60 * 60;  // two days 单位秒级
   double forceDeletePercentage =
     static_cast<double>(_cfg->bgcompactForceDeletePercentage) / 100.0;
 
@@ -2022,7 +2022,7 @@ void RocksKVStore::bgCompact() {
                 << " or deleted key:" << it.second->num_deletions
                 << " delete ratio:" << deleteRatio;
       getBaseDB()->SuggestCompactRange(
-        getDataColumnFamilyHandle(), &start, &end);
+        getDataColumnFamilyHandle(), &start, &end);  // 触发compaction
       maxSuggestFiles--;
       continue;
     }
@@ -2449,7 +2449,7 @@ Expected<BackupInfo> RocksKVStore::backup(const std::string& dir,
   if (highVisible == Transaction::TXNID_UNINITED) {
     LOG(WARNING) << "store:" << dbId() << " highVisible still zero";
   }
-  result.setBinlogPos(highVisible);
+  result.setBinlogPos(highVisible);  // 获取当前binglogid
   result.setStartTimeSec(sinceEpoch());
   if (mode == KVStore::BackupMode::BACKUP_CKPT ||
       mode == KVStore::BackupMode::BACKUP_CKPT_INTER) {
@@ -2459,7 +2459,7 @@ Expected<BackupInfo> RocksKVStore::backup(const std::string& dir,
         delete checkpoint;
       }
     });
-    auto s = rocksdb::Checkpoint::Create(getBaseDB(), &checkpoint);
+    auto s = rocksdb::Checkpoint::Create(getBaseDB(), &checkpoint);  // getbinlogid和checkpoint之间key可能重复,无所谓
     if (!s.ok()) {
       return {ErrorCodes::ERR_INTERNAL, s.ToString()};
     }
@@ -2467,7 +2467,7 @@ Expected<BackupInfo> RocksKVStore::backup(const std::string& dir,
     if (!s.ok()) {
       return {ErrorCodes::ERR_INTERNAL, s.ToString()};
     }
-  } else {
+  } else {  // copy?
     rocksdb::BackupEngine* bkEngine = nullptr;
     auto s = rocksdb::BackupEngine::Open(
       rocksdb::Env::Default(), rocksdb::BackupEngineOptions(dir), &bkEngine);
@@ -2496,7 +2496,7 @@ Expected<BackupInfo> RocksKVStore::backup(const std::string& dir,
       // for win32, the dir should change to "\\"
       INVARIANT(path.string().find(dir) == 0);
 #endif
-      std::string relative = path.string().erase(0, dir.size());
+      std::string relative = path.string().erase(0, dir.size());  // 只留文件名
       flist[relative] = filesize;
     }
   } catch (const std::exception& ex) {
@@ -2511,7 +2511,7 @@ Expected<BackupInfo> RocksKVStore::backup(const std::string& dir,
     return saveret.status();
   }
   succ = true;
-  return result;
+  return result;  // 包含文件列表 binglogpos等信息 backup meta
 }
 
 Expected<std::string> RocksKVStore::saveBackupMeta(const std::string& dir,
@@ -2704,7 +2704,7 @@ Expected<std::unique_ptr<Transaction>> RocksKVStore::createTransaction(
   } else {
     INVARIANT_D(0);
   }
-  addUnCommitedTxnInLock(txnId);
+  addUnCommitedTxnInLock(txnId);  // 添加到_aliveTxns
   return ret;
 }
 
@@ -2713,7 +2713,7 @@ Status RocksKVStore::assignBinlogIdIfNeeded(Transaction* txn) {
     std::lock_guard<std::mutex> lk(_mutex);
     uint64_t binlogId = _nextBinlogSeq++;
 
-    txn->setBinlogId(binlogId);
+    txn->setBinlogId(binlogId);  // 分配binlog id
     INVARIANT_D(_aliveBinlogs.find(binlogId) == _aliveBinlogs.end());
     _aliveBinlogs.insert({binlogId, {false, txn->getTxnId()}});
 
@@ -2797,27 +2797,27 @@ void RocksKVStore::markCommittedInLock(uint64_t txnId, uint64_t binlogTxnId) {
 
   it->second.first = true;
   auto binlogId = it->second.second;
-  _aliveTxns.erase(it);
+  _aliveTxns.erase(it);  // 先删除
 
-  if (binlogId != Transaction::TXNID_UNINITED) {
+  if (binlogId != Transaction::TXNID_UNINITED) {  // 之前标记正在处理
     auto i = _aliveBinlogs.find(binlogId);
     INVARIANT_D(i != _aliveBinlogs.end());
     INVARIANT_D(i->second.second == txnId ||
                 i->second.second == Transaction::TXNID_UNINITED);  // rollback
 
     i->second.first = true;
-    i->second.second = binlogTxnId;
-    if (i == _aliveBinlogs.begin()) {
+    i->second.second = binlogTxnId;  // 用传入的binlogTxnId更新
+    if (i == _aliveBinlogs.begin()) {  // 如果是最小的binglogid
       while (i != _aliveBinlogs.end()) {
-        if (!i->second.first) {
+        if (!i->second.first) {  // !commit_or_not
           break;
         }
 
         if (i->second.second != Transaction::TXNID_UNINITED) {
-          _highestVisible = i->first;
+          _highestVisible = i->first;  // 设置成最大的visible binglogid
           INVARIANT_D(_highestVisible <= _nextBinlogSeq);
         }
-        i = _aliveBinlogs.erase(i);
+        i = _aliveBinlogs.erase(i);  // 删除小的binglogid
       }
     }
   }
@@ -2987,7 +2987,7 @@ Status RocksKVStore::deleteFilesInRangeWithoutBinlog(
 Status RocksKVStore::saveMinBinlogId(uint64_t id, uint64_t ts) {
   RecordKey key(REPLLOGKEYV2_META_CHUNKID,
                 REPLLOGKEYV2_META_DBID,
-                RecordType::RT_META,
+                RecordType::RT_META,  // 存min binlogid
                 "",
                 "");
 

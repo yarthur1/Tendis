@@ -69,7 +69,7 @@ std::string ReplLogKeyV2::encode() const {
   RecordKey tmpRk(ReplLogKeyV2::CHUNKID,
                   ReplLogKeyV2::DBID,
                   RecordType::RT_BINLOG,
-                  std::move(key),
+                  std::move(key),  // 只用了binlogid
                   "");
   return tmpRk.encode();
 }
@@ -275,7 +275,7 @@ size_t ReplLogValueV2::fixedHeaderSize() {
   return ReplLogValueV2::FIXED_HEADER_SIZE;
 }
 
-size_t ReplLogValueV2::getHdrSize() const {
+size_t ReplLogValueV2::getHdrSize() const {  // 包含cmdstr
   return ReplLogValueV2::fixedHeaderSize() + varintEncodeSize(_cmdStr.size()) +
     _cmdStr.size();
 }
@@ -309,7 +309,7 @@ std::string ReplLogValueV2::encodeHdr() const {
 
   INVARIANT_D(offset == fixedHeaderSize());
 
-  size = lenStrEncode(&header[offset], hdrSize - offset, _cmdStr);
+  size = lenStrEncode(&header[offset], hdrSize - offset, _cmdStr);  // _cmdStr的lenth和data
   offset += size;
   INVARIANT_D(offset == hdrSize);
 
@@ -317,13 +317,13 @@ std::string ReplLogValueV2::encodeHdr() const {
 }
 
 std::string ReplLogValueV2::encode(
-  const std::vector<ReplLogValueEntryV2>& vec) const {
+  const std::vector<ReplLogValueEntryV2>& vec) const {  // append entry
   std::string val = encodeHdr();
   size_t offset = val.size();
 
   size_t allocSize = offset;
   for (const auto& v : vec) {
-    allocSize += v.encodeSize();
+    allocSize += v.encodeSize();  // entry的size
   }
 
   val.resize(allocSize);
@@ -332,14 +332,14 @@ std::string ReplLogValueV2::encode(
     uint8_t* desc =
       const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(val.c_str())) +
       offset;
-    size_t len = v.encode(desc, allocSize - offset);
+    size_t len = v.encode(desc, allocSize - offset);  // 将entry编码并append到string
     INVARIANT_D(len > 0);
     offset += len;
   }
 
   INVARIANT_D(offset == allocSize);
 
-  RecordValue tmpRv(std::move(val), RecordType::RT_BINLOG, -1);
+  RecordValue tmpRv(std::move(val), RecordType::RT_BINLOG, -1);  // 构造RecordValue
 
   return tmpRv.encode();
 }
@@ -413,7 +413,7 @@ Expected<ReplLogValueV2> ReplLogValueV2::decode(const char* str, size_t size) {
                         timestamp,
                         versionEp,
                         eCmd.value().first,
-                        keyCstr,
+                        keyCstr,  // 原始传入的str
                         size);
 }
 
