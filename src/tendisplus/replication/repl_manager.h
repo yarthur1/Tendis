@@ -47,7 +47,7 @@ enum class MPovClientType {
   respClient = 1,  // resp = REdis Serialization Protocol
 };
 
-struct MPovStatus {
+struct MPovStatus {   // 每个master有多个，每个slave对应一个MPovStatus?
   bool isRunning = false;
   uint32_t dstStoreId = 0;
   // the greatest id that has been applied
@@ -77,7 +77,7 @@ struct MPovFullPushStatus {
   uint32_t storeid;
   FullPushState state;
   // the greatest id that has been applied
-  uint64_t binlogPos;
+  uint64_t binlogPos;  // 标记checkpoint时的binglog id
   SCLOCK::time_point startTime;
   SCLOCK::time_point endTime;
   std::shared_ptr<BlockingTcpClient> client;
@@ -312,7 +312,7 @@ class ReplManager {
 
   // slave's pov, sync status
   // GUARDED_BY(_mutex)
-  std::vector<std::unique_ptr<SPovStatus>> _syncStatus;
+  std::vector<std::unique_ptr<SPovStatus>> _syncStatus;  // 多个rocksdb实例
 
   // master's pov, living slave clients
 #if defined(_WIN32) && _MSC_VER > 1900
@@ -324,7 +324,7 @@ class ReplManager {
   std::vector<std::map<string, MPovFullPushStatus*>> _fullPushStatus;
 #else
   // GUARDED_BY(_mutex)
-  std::vector<std::map<uint64_t, std::unique_ptr<MPovStatus>>> _pushStatus;  // clientid->
+  std::vector<std::map<uint64_t, std::unique_ptr<MPovStatus>>> _pushStatus;  // 增量同步的状态 clientid->
   std::vector<std::map<std::string, std::unique_ptr<MPovFullPushStatus>>>
     _fullPushStatus;
 #endif
@@ -334,7 +334,7 @@ class ReplManager {
   std::vector<std::unique_ptr<RecycleBinlogStatus>> _logRecycStatus;
 
   // master's pov, workerpool of pushing full backup
-  std::unique_ptr<WorkerPool> _fullPusher;  // 由slave触发
+  std::unique_ptr<WorkerPool> _fullPusher;  // 由slave触发  执行supplyFullSyncRoutine
 
   // master's pov fullsync rate limiter
   std::unique_ptr<RateLimiter> _rateLimiter;

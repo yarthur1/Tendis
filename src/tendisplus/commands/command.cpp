@@ -365,12 +365,12 @@ Status Command::delKeyPessimisticInLock(Session* sess,
   std::unique_ptr<Transaction> txn = std::move(ptxn.value());
 
   Expected<std::string> ret =
-    delSubkeysRange(sess, storeId, mk, valueType, txn.get());
+    delSubkeysRange(sess, storeId, mk, valueType, txn.get());  // 删除所有subkey
   if (!ret.ok()) {
     return ret.status();
   }
 
-  Status s = kvstore->delKV(mk, txn.get());
+  Status s = kvstore->delKV(mk, txn.get());  // 删除元数据key
   if (!s.ok()) {
     return s;
   }
@@ -499,7 +499,7 @@ Expected<std::string> Command::delSubkeysRange(Session* sess,
                                                uint32_t storeId,
                                                const RecordKey& mk,
                                                RecordType valueType,
-                                               Transaction* txn) {
+                                               Transaction* txn) {   // 用compaction filter删除有什么问题
   Status s(ErrorCodes::ERR_OK, "");
   auto guard = MakeGuard([&s] {
     if (!s.ok()) {
@@ -886,7 +886,7 @@ Expected<RecordValue> Command::expireKeyIfNeeded(Session* sess,
       return ptxn.status();
     }
     std::unique_ptr<Transaction> txn = std::move(ptxn.value());
-    Expected<RecordValue> eValue = kvstore->getKV(mk, txn.get());
+    Expected<RecordValue> eValue = kvstore->getKV(mk, txn.get());  // string key或者元信息key?string key不会走到ttlindex
     if (!eValue.ok()) {
       // maybe ErrorCodes::ERR_NOTFOUND
       ++sess->getServerEntry()->getServerStat().keyspaceMisses;
@@ -897,7 +897,7 @@ Expected<RecordValue> Command::expireKeyIfNeeded(Session* sess,
     uint64_t targetTtl = eValue.value().getTtl();
     RecordType valueType = eValue.value().getRecordType();
     if (server->getParams()->noexpire || targetTtl == 0 ||
-        currentTs < targetTtl) {
+        currentTs < targetTtl) {  // 还没过期
       if (valueType != tp && tp != RecordType::RT_DATA_META) {
         /** NOTE(vinchen): This error message contains the key name, it is
          * useful for users. The error message is a little different with redis.

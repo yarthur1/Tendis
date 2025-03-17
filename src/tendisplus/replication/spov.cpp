@@ -521,7 +521,7 @@ void ReplManager::slaveChkSyncStatus(const StoreMeta& metaSnapshot) {
     _svr->getParams()->domainEnabled ? _cfg->bindIp : client->getLocalIp();
   ss << "INCRSYNC " << metaSnapshot.syncFromId << ' ' << metaSnapshot.id << ' '
      << metaSnapshot.binlogId << ' ' << myip << ' ' << _cfg->port;
-  auto status = client->writeLine(ss.str());
+  auto status = client->writeLine(ss.str());  // 发送增量同步命令 重建增量同步
   if (!status.ok()) {
     errStr =
       errPrefix + "psync master write failed with error:" + status.toString();

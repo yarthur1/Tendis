@@ -47,13 +47,13 @@ ChunkMigrateSender::ChunkMigrateSender(const std::bitset<CLUSTER_SLOTS>& slots,
     _dstStoreid(0),
     _dstNode(nullptr) {}
 
-Status ChunkMigrateSender::sendChunk() {
+Status ChunkMigrateSender::sendChunk() {   // 每个kvstore 可以并行slot迁移
   LOG(INFO) << "sendChunk begin on store:" << _storeid
             << " slots:" << bitsetStrEncode(_slots);
   uint64_t senderStartTime = msSinceEpoch();
   setTaskStartTime(senderStartTime);
   /* send Snapshot of bitmap data */
-  Status s = sendSnapshot();
+  Status s = sendSnapshot();  // 按照slot依次发送key
   if (!s.ok()) {
     LOG(ERROR) << "send snapshot fail:" << s.toString();
     return s;
@@ -61,12 +61,12 @@ Status ChunkMigrateSender::sendChunk() {
   setSnapShotEndTime(msSinceEpoch());
   LOG(INFO) << "snapshot begin at:" << getSnapShotStartTime()
             << "end at:" << getSnapShotEndTime();
-  auto snapshot_binlog = getProtectBinlogid();
+  auto snapshot_binlog = getProtectBinlogid();  // 获取snapshot时的binlog
   _sendstate = MigrateSenderStatus::SNAPSHOT_DONE;
   uint64_t sendSnapTimeEnd = msSinceEpoch();
   /* send binlog of the task slots in iteration of 10(default),
    * make sure the diff offset of srcNode and DstNode is small enough*/
-  s = sendBinlog();
+  s = sendBinlog();  // 发送增量
   if (!s.ok()) {
     LOG(ERROR) << "send binlog fail:" << s.toString();
     auto s2 = sendOver();
@@ -80,7 +80,7 @@ Status ChunkMigrateSender::sendChunk() {
   /* lock chunks to block the client for while */
   auto lockStart = msSinceEpoch();
   _lockStartTime.store(lockStart, std::memory_order_relaxed);
-  s = lockChunks();
+  s = lockChunks();  // 加锁停止写入
   if (!s.ok()) {
     return s;
   }
@@ -96,7 +96,7 @@ Status ChunkMigrateSender::sendChunk() {
     return s;
   }
   /* in chunk lock, send syncversion meta */
-  s = sendVersionMeta();
+  s = sendVersionMeta();  // 变更slot信息？
   if (!s.ok()) {
     unlockChunks();
     auto s2 = sendOver();
@@ -289,7 +289,7 @@ Status ChunkMigrateSender::sendRangeByBatch(Transaction* txn,
                                             uint32_t end,
                                             uint32_t* totalNum) {
   // need add IS lock for chunks ???
-  auto cursor = txn->createSlotsCursor(begin, end);
+  auto cursor = txn->createSlotsCursor(begin, end);  // 遍历slot key
   uint32_t timeoutSec = _cfg->migrateNetworkTimeout;
   Status s;
   MigrateBatch migratebatch(
@@ -303,7 +303,7 @@ Status ChunkMigrateSender::sendRangeByBatch(Transaction* txn,
     });
     Status migrateStatus;
 
-    while (true) {
+    while (true) {  // snapshot遍历时任然可以写入
       Expected<Record> expRcd = cursor->next();
       if (expRcd.status().code() == ErrorCodes::ERR_EXHAUST) {
         break;
@@ -325,7 +325,7 @@ Status ChunkMigrateSender::sendRangeByBatch(Transaction* txn,
       RET_IF_ERR(migrateStatus);
 
       if (migratebatch.isFull()) {
-        migrateStatus = migratebatch.send();
+        migrateStatus = migratebatch.send();  // 发送到dst 直接将数据写到连接里 不是repl binglog格式？
         RET_IF_ERR(migrateStatus);
       }
     }
@@ -359,7 +359,7 @@ Status ChunkMigrateSender::sendSnapshot() {
   _dbWithLock = std::make_unique<DbWithLock>(std::move(expdb.value()));
   auto kvstore = _dbWithLock->store;
 
-  _curBinlogid.store(kvstore->getHighestBinlogId(), std::memory_order_relaxed);
+  _curBinlogid.store(kvstore->getHighestBinlogId(), std::memory_order_relaxed);  // 
 
   LOG(INFO) << "sendSnapshot begin, storeid:" << _storeid
             << " _curBinlogid:" << _curBinlogid
@@ -374,7 +374,7 @@ Status ChunkMigrateSender::sendSnapshot() {
   setSnapShotStartTime(msSinceEpoch());
 
   for (size_t i = 0; i < CLUSTER_SLOTS; i++) {
-    if (_slots.test(i)) {
+    if (_slots.test(i)) {  // 要迁移的slot
       sendSlotNum++;
       uint32_t sendNum = 0;
       if (_cfg->migrateSnapshotBatchSizeKB > 0) {
@@ -524,9 +524,9 @@ Status ChunkMigrateSender::sendBinlog() {
   uint16_t iterNum = _svr->getParams()->migrateBinlogIter;
   bool finishCatchup = false;
   uint32_t catchupTimes = 0;
-  uint64_t binlogHigh = kvstore->getHighestBinlogId();
+  uint64_t binlogHigh = kvstore->getHighestBinlogId();  // cur binlog
   uint64_t diffOffset = 0;
-  auto start = getProtectBinlogid();
+  auto start = getProtectBinlogid();  // 上一次记录的binlog
 
   serverLog(LL_NOTICE,
             "ChunkMigrateSender::sendBinlog from"

@@ -31,7 +31,7 @@ class ClusterState;
 
 using SlotsBitmap = std::bitset<CLUSTER_SLOTS>;
 
-class GCManager {
+class GCManager {  // 删除slot迁移后剩余的key
  public:
   explicit GCManager(std::shared_ptr<ServerEntry> svr);
 

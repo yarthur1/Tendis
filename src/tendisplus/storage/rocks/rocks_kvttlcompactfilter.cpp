@@ -17,7 +17,7 @@
 
 namespace tendisplus {
 
-class KVTtlCompactionFilter : public CompactionFilter {
+class KVTtlCompactionFilter : public CompactionFilter {   // filter逻辑
  public:
   explicit KVTtlCompactionFilter(KVStore* store,
                                  uint64_t current_time,
@@ -63,7 +63,7 @@ class KVTtlCompactionFilter : public CompactionFilter {
       return false;
     }
 
-    RecordType type = RecordKey::decodeType(key.data(), key.size());
+    RecordType type = RecordKey::decodeType(key.data(), key.size());  // key type和val type不一样
     RecordType vt;
     uint64_t ttl;
     _filterCount++;
@@ -71,7 +71,7 @@ class KVTtlCompactionFilter : public CompactionFilter {
       case RecordType::RT_DATA_META:
         vt =
           RecordValue::decodeType(existing_value.data(), existing_value.size());
-        if (vt == RecordType::RT_KV) {
+        if (vt == RecordType::RT_KV) {  // 只有string类型的key才会compaction ttl
           ttl = RecordValue::decodeTtl(existing_value.data(),
                                        existing_value.size());
           if (ttl > 0 && ttl < _currentTime) {
@@ -107,7 +107,7 @@ class KVTtlCompactionFilter : public CompactionFilter {
 };
 
 std::unique_ptr<CompactionFilter>
-KVTtlCompactionFilterFactory::CreateCompactionFilter(
+KVTtlCompactionFilterFactory::CreateCompactionFilter(   // 创建compaction filter
   const CompactionFilter::Context& context) {
   if (_cfg->noexpire) {
     return nullptr;
@@ -117,7 +117,7 @@ KVTtlCompactionFilterFactory::CreateCompactionFilter(
   INVARIANT(_store != nullptr);
   // NOTE(vinchen): It can't get time = sinceEpoch () here, because it
   // should get the binlog time in slave point.
-  currentTs = _store->getCurrentTime();
+  currentTs = _store->getCurrentTime();  // current
 
   if (currentTs == 0) {
     LOG(WARNING) << "The currentTs is 0, the kvttlcompaction would do nothing";

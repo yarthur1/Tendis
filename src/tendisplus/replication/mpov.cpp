@@ -88,7 +88,7 @@ void ReplManager::masterPushRoutine(uint32_t storeId, uint64_t clientId) {
     INVARIANT_D(mpov[clientId]->isRunning);
     mpov[clientId]->isRunning = false;
     if (nextSched > mpov[clientId]->nextSchedTime) {
-      mpov[clientId]->nextSchedTime = nextSched;
+      mpov[clientId]->nextSchedTime = nextSched;   // 执行完更新调度时间
     }
     if (lastSend > mpov[clientId]->lastSendBinlogTime) {
       mpov[clientId]->lastSendBinlogTime = lastSend;
@@ -132,7 +132,7 @@ void ReplManager::masterPushRoutine(uint32_t storeId, uint64_t clientId) {
       client.get(), storeId, dstStoreId, binlogPos, needHeartbeat, _svr, _cfg);  // redis client
   } else {
     ret = masterSendBinlogV2(
-      client.get(), storeId, dstStoreId, binlogPos, needHeartbeat, _svr, _cfg);  // 发送binlog
+      client.get(), storeId, dstStoreId, binlogPos, needHeartbeat, _svr, _cfg);  // 一次发送多条binlog
   }
   if (!ret.ok()) {
     LOG(WARNING) << "masterSendBinlog to client:" << client->getRemoteRepr()
@@ -148,10 +148,10 @@ void ReplManager::masterPushRoutine(uint32_t storeId, uint64_t clientId) {
     return;
   } else {
     if (ret.value().binlogId > binlogPos) {
-      nextSched = SCLOCK::now();
+      nextSched = SCLOCK::now();  // 本次有binlog发送，不需要等待调度时间
       lastSend = nextSched;
     } else {
-      nextSched = SCLOCK::now() + std::chrono::milliseconds(10);
+      nextSched = SCLOCK::now() + std::chrono::milliseconds(10);  // 本次没有发送数据 等待10ms在同步增量
       if (needHeartbeat) {
         lastSend = SCLOCK::now();
       }
@@ -160,7 +160,7 @@ void ReplManager::masterPushRoutine(uint32_t storeId, uint64_t clientId) {
     if (_pushStatus[storeId].find(clientId) == _pushStatus[storeId].end()) {
       return;
     }
-    _pushStatus[storeId][clientId]->binlogPos = ret.value().binlogId;
+    _pushStatus[storeId][clientId]->binlogPos = ret.value().binlogId;  // 记录已经发送的binlog
     _pushStatus[storeId][clientId]->binlogTs = ret.value().binlogTs;
   }
 }
@@ -411,7 +411,7 @@ void ReplManager::supplyFullSyncRoutine(
 
   {
     std::lock_guard<std::mutex> lk(_mutex);
-    uint64_t highestBinlogid = store->getHighestBinlogId();
+    uint64_t highestBinlogid = store->getHighestBinlogId();  // 当前最大的binglog id
     std::string slaveNode =
       slave_listen_ip + ":" + std::to_string(slave_listen_port);
     auto iter = _fullPushStatus[storeId].find(slaveNode);
@@ -477,7 +477,7 @@ void ReplManager::supplyFullSyncRoutine(
     });
 
   uint64_t currTime = nsSinceEpoch();
-  Expected<BackupInfo> bkInfo =
+  Expected<BackupInfo> bkInfo =   // checkpoint文件信息
     store->backup(store->dftBackupDir(),
                   KVStore::BackupMode::BACKUP_CKPT_INTER,
                   _svr->getCatalog()->getBinlogVersion());
@@ -533,7 +533,7 @@ void ReplManager::supplyFullSyncRoutine(
   std::string readBuf;
   size_t fileBatch = (_cfg->binlogRateLimitMB * 1024 * 1024) / 10;
   readBuf.reserve(fileBatch);
-  for (auto& fileInfo : bkInfo.value().getFileList()) {
+  for (auto& fileInfo : bkInfo.value().getFileList()) {  // 遍历发送file
     s = client->writeLine(fileInfo.first);
     if (!s.ok()) {
       LOG(ERROR) << "write fname:" << fileInfo.first
@@ -567,7 +567,7 @@ void ReplManager::supplyFullSyncRoutine(
         return;
       }
       secs = _cfg->timeoutSecBinlogWaitRsp;
-      auto rpl = client->readLine(std::chrono::seconds(secs));
+      auto rpl = client->readLine(std::chrono::seconds(secs));  // 等待ack
       if (!rpl.ok() || rpl.value() != "+OK") {
         LOG(ERROR) << "send client:" << client->getRemoteRepr()
                    << "file:" << fileInfo.first << ",size:" << fileInfo.second

@@ -163,7 +163,7 @@ class TtlCompactionFilter : public CompactionFilter {
   virtual bool Filter(int level, const Slice& key, const Slice& old_val,
                       std::string* new_val, bool* value_changed) const
       override {
-    if (DBWithTTLImpl::IsStale(old_val, ttl_, env_)) {
+    if (DBWithTTLImpl::IsStale(old_val, ttl_, env_)) {  // 过期需要删除
       return true;
     }
     if (user_comp_filter_ == nullptr) {
@@ -174,12 +174,12 @@ class TtlCompactionFilter : public CompactionFilter {
                              old_val.size() - DBWithTTLImpl::kTSLength);
     if (user_comp_filter_->Filter(level, key, old_val_without_ts, new_val,
                                   value_changed)) {
-      return true;
+      return true;  // 满足过滤条件  删除
     }
     if (*value_changed) {
       new_val->append(
           old_val.data() + old_val.size() - DBWithTTLImpl::kTSLength,
-          DBWithTTLImpl::kTSLength);
+          DBWithTTLImpl::kTSLength);  // 将old ttl放到newval中
     }
     return false;
   }

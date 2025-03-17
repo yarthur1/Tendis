@@ -102,7 +102,7 @@ class MigrateSendTask {
   std::shared_ptr<pTask> _pTask;
   mutable std::mutex _mutex;
   void stopTask();
-  void sendSlots();
+  void sendSlots();  // 每个kv store一个MigrateSendTask
   void deleteSenderChunks();
   void setState(MigrateSendState newState);
   std::string toString();
@@ -336,7 +336,7 @@ class MigrateManager {
   std::unordered_map<std::string, std::unique_ptr<MigrateSendTask>>
     _migrateSendTaskMap;
 
-  std::unique_ptr<WorkerPool> _migrateSender;
+  std::unique_ptr<WorkerPool> _migrateSender;  // 执行sendSlots
   std::unique_ptr<WorkerPool> _migrateClear;
   std::shared_ptr<PoolMatrix> _migrateSenderMatrix;
   std::shared_ptr<PoolMatrix> _migrateClearMatrix;

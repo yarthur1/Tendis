@@ -23,14 +23,14 @@ class IndexManager {
  public:
   IndexManager(std::shared_ptr<ServerEntry> svr,
                const std::shared_ptr<ServerParams>& cfg);
-  Status startup();
+  Status startup();   // 初始化线程池并启动后台线程
   void stop();
   Status run();
   Status scanExpiredKeysJob(uint32_t storeId);
   int tryDelExpiredKeysJob(uint32_t storeId);
   bool isRunning();
   Status stopStore(uint32_t storeId);
-  void indexScannerResize(size_t size);
+  void indexScannerResize(size_t size);  // WorkerPool resize
   void keyDeleterResize(size_t size);
   size_t indexScannerSize();
   size_t keyDeleterSize();
@@ -45,7 +45,7 @@ class IndexManager {
  private:
   std::unique_ptr<WorkerPool> _indexScanner;
   std::unique_ptr<WorkerPool> _keyDeleter;
-  std::unordered_map<std::size_t, std::list<TTLIndex>> _expiredKeys;
+  std::unordered_map<std::size_t, std::list<TTLIndex>> _expiredKeys;  // 过期key定期删除? storeId->list
   std::unordered_map<std::size_t, std::string> _scanPoints;
   std::vector<uint64_t> _scanPonitsTtl;
   JobStatus _scanJobStatus;

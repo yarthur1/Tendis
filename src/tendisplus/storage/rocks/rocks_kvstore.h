@@ -66,12 +66,12 @@ class RocksTxn : public Transaction {
   virtual Status rollback();
   // getKV: get data from chosen column family
   Expected<std::string> getKV(const std::string& key) final;
-  Status setKV(const std::string& key,
+  Status setKV(const std::string& key,  // 写到数据cf,并记录set kv，后续生成binlog
                const std::string& val,
                const uint64_t ts = 0) final;
   Status delKV(const std::string& key, const uint64_t ts = 0) final;
   Status setKVWithoutBinlog(const std::string& key,
-                            const std::string& val) final;
+                            const std::string& val) final;  // 不会记录key val,提交时无法生成binglog?
   Status addDeleteRangeBinlog(const std::string& begin,
                               const std::string& end) final;
   Status addDeleteFilesInRangeBinlog(const std::string& begin,
@@ -81,7 +81,7 @@ class RocksTxn : public Transaction {
   Status migrate(const std::string& logKey, const std::string& logValue) final;
 
   Status applyBinlog(const ReplLogValueEntryV2& logEntry) final;
-  Status setBinlogKV(uint64_t binlogId,
+  Status setBinlogKV(uint64_t binlogId,  // 写到binlog cf
                      const std::string& logKey,
                      const std::string& logValue) final;
   Status setBinlogKV(const std::string& logKey,
@@ -499,14 +499,14 @@ class RocksKVStore : public KVStore {
 
   std::atomic<KVStore::StoreMode> _mode;
 
-  const TxnMode _txnMode;
+  const TxnMode _txnMode;   // StoreMode和TxnMode
 
   std::unique_ptr<rocksdb::OptimisticTransactionDB> _optdb;
   std::unique_ptr<rocksdb::TransactionDB> _pesdb;
 
   std::shared_ptr<rocksdb::Statistics> _stats;
   std::shared_ptr<rocksdb::Cache> _blockCache;
-  std::shared_ptr<rocksdb::Cache> _rowCache;
+  std::shared_ptr<rocksdb::Cache> _rowCache;  // 如何使用_rowCache
   std::shared_ptr<rocksdb::Cache> _blobCache;
   std::shared_ptr<rocksdb::RateLimiter> _rateLimiter;
   std::shared_ptr<rocksdb::SstFileManager> _sstFileManager;
@@ -544,7 +544,7 @@ class RocksKVStore : public KVStore {
   std::shared_ptr<RocksdbEnv> _env;
   std::map<std::string, std::string> _rocksIntProperties;
   std::map<std::string, std::string> _rocksStringProperties;
-  std::vector<rocksdb::ColumnFamilyHandle*> _cfHandles;
+  std::vector<rocksdb::ColumnFamilyHandle*> _cfHandles;   // 0 datacf 1 binlog cf
   std::vector<rocksdb::ColumnFamilyDescriptor> _cfDescs;
 };
 

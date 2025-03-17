@@ -163,7 +163,7 @@ Status IndexManager::scanExpiredKeysJob(uint32_t storeId) {
   }
 
   LocalSessionGuard sg(_svr.get());
-  auto expd = _svr->getSegmentMgr()->getDb(
+  auto expd = _svr->getSegmentMgr()->getDb(  // 获取db
     sg.getSession(), storeId, mgl::LockMode::LOCK_IS, true);
   if (!expd.ok()) {
     return expd.status();
@@ -176,7 +176,7 @@ Status IndexManager::scanExpiredKeysJob(uint32_t storeId) {
     return {ErrorCodes::ERR_OK, ""};
   }
 
-  auto ptxn = store->createTransaction(sg.getSession());
+  auto ptxn = store->createTransaction(sg.getSession());  // createTransaction
   if (!ptxn.ok()) {
     return ptxn.status();
   }
@@ -185,7 +185,7 @@ Status IndexManager::scanExpiredKeysJob(uint32_t storeId) {
   // Here, it's safe to use msSinceEpoch(), because it can't be a
   // slave here. In fact, it maybe more safe to use
   // store->getCurrentTime()
-  auto cursor = txn->createTTLIndexCursor(store->getCurrentTime());
+  auto cursor = txn->createTTLIndexCursor(store->getCurrentTime());  // until time
   INVARIANT(_scanPoints.find(storeId) != _scanPoints.end());
   // seek to the place where we left NOTE: skip the entry
   // already push into list
@@ -287,7 +287,7 @@ int IndexManager::tryDelExpiredKeysJob(uint32_t storeId) {
     auto sess = sg.getSession();
     sess->getCtx()->setAuthed();
     sess->getCtx()->setDbId(index.getDbId());
-    Command::expireKeyIfNeeded(
+    Command::expireKeyIfNeeded(   // 具体的删除key过程
       sg.getSession(), index.getPriKey(), index.getType());
 
     {
@@ -316,7 +316,7 @@ int IndexManager::tryDelExpiredKeysJob(uint32_t storeId) {
 Status IndexManager::run() {
   auto scheScanExpired = [this]() {
     for (uint32_t i = 0; i < _svr->getKVStoreCount(); ++i) {
-      _indexScanner->schedule([this, i]() { scanExpiredKeysJob(i); });
+      _indexScanner->schedule([this, i]() { scanExpiredKeysJob(i); });  // 扫描过期key
     }
   };
 
@@ -334,7 +334,7 @@ Status IndexManager::run() {
 
     for (auto store_idx : stored_with_expires) {
       _keyDeleter->schedule(
-        [this, store_idx]() { tryDelExpiredKeysJob(store_idx); });
+        [this, store_idx]() { tryDelExpiredKeysJob(store_idx); });  // 删除过期key
     }
 
     return stored_with_expires.size() > 0;

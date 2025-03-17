@@ -186,7 +186,7 @@ std::unique_ptr<TTLIndexCursor> RocksTxn::createTTLIndexCursor(uint64_t until) {
   RecordKey upper(TTLIndex::CHUNKID + 1, 0, RecordType::RT_INVALID, "", "");
   std::string upperBound = upper.prefixChunkid();  // 只返回chunkid的string
   auto cursor =
-    createCursor(ColumnFamilyNumber::ColumnFamily_Default, &upperBound);
+    createCursor(ColumnFamilyNumber::ColumnFamily_Default, &upperBound);  // 只扫描chunkid的key
   return std::make_unique<TTLIndexCursor>(std::move(cursor), until);
 }
 
@@ -1314,7 +1314,7 @@ RocksKVStore::RocksKVStore(
     _rateLimiter(rateLimiter),
     _sstFileManager(sstFileManager),
     _nextTxnSeq(0),
-    _highestVisible(Transaction::TXNID_UNINITED),
+    _highestVisible(Transaction::TXNID_UNINITED),  // 当前最大binlog
     _logOb(nullptr),
     _env(std::make_shared<RocksdbEnv>()) {
   Expected<uint64_t> s =
@@ -1352,7 +1352,7 @@ rocksdb::Options RocksKVStore::options(const std::string cf) {
   options.level_compaction_dynamic_level_bytes = true;
   // level_1 max size: 512MB, in fact, things are more complex
   // since we set level_compaction_dynamic_level_bytes = true
-  options.max_bytes_for_level_base = 512 * 1024 * 1024;  // 512MB
+  options.max_bytes_for_level_base = 512 * 1024 * 1024;  // 512MB  level1 size
   options.max_open_files = -1;
   // if we have no 'empty reads', we can disable bottom
   // level's bloomfilters
@@ -1427,7 +1427,7 @@ rocksdb::Options RocksKVStore::options(const std::string cf) {
   if (dbId() != CATALOG_NAME) {
     // setup the ttlcompactionfilter expect "catalog" db
     options.compaction_filter_factory.reset(
-      new KVTtlCompactionFilterFactory(this, _cfg));
+      new KVTtlCompactionFilterFactory(this, _cfg));  // 设置 CompactionFilter?
   }
 
   _env->clear();
@@ -1472,7 +1472,7 @@ bool RocksKVStore::isEmpty(bool ignoreBinlog) const {
   auto baseCursor = txn->createAllDataCursor();
   Expected<std::string> expKey = baseCursor->key();
 
-  if (expKey.ok()) {
+  if (expKey.ok()) {  // 存在key
     return false;
   } else if (expKey.status().code() == ErrorCodes::ERR_EXHAUST) {
     if (!ignoreBinlog) {
@@ -1550,7 +1550,7 @@ Status RocksKVStore::destroy() {
   return status;
 }
 
-Status RocksKVStore::setMode(StoreMode mode) {
+Status RocksKVStore::setMode(StoreMode mode) {  // 没有pending txn
   std::lock_guard<std::mutex> lk(_mutex);
   if (_aliveTxns.size() != 0) {
     return {ErrorCodes::ERR_INTERNAL,
@@ -1654,7 +1654,7 @@ Expected<bool> RocksKVStore::deleteBinlog(uint64_t start) {  // 从start开始�
 
     DLOG(INFO) << "deleteBinlog dbid:" << dbId()
                << " delete:" << explog.value().getBinlogId();
-    auto s = txn->delBinlog(explog.value());
+    auto s = txn->delBinlog(explog.value());   // del binlog本身不需要记录到binlog cf
     if (!s.ok()) {
       LOG(ERROR) << "delbinlog error:" << s.toString();
       return s;
@@ -1784,7 +1784,7 @@ Expected<TruncateBinlogResult> RocksKVStore::truncateBinlogV2(
   return result;
 }
 
-Expected<uint64_t> RocksKVStore::getBinlogCnt(Transaction* txn) const {
+Expected<uint64_t> RocksKVStore::getBinlogCnt(Transaction* txn) const {  // getBinlogCnt
   auto bcursor = txn->createRepllogCursorV2(Transaction::MIN_VALID_TXNID, true);
   uint64_t cnt = 0;
   while (true) {
@@ -1848,7 +1848,7 @@ Status RocksKVStore::compactRange(ColumnFamilyNumber cf,
   }
   rocksdb::Status status;
   if (cf == ColumnFamilyNumber::ColumnFamily_Default) {
-    status = db->CompactRange(compactionOptions, sbegin, send);
+    status = db->CompactRange(compactionOptions, sbegin, send);  // CompactRange和compaction filter有关吗
   } else if (cf == ColumnFamilyNumber::ColumnFamily_Binlog) {
     status = db->CompactRange(
       compactionOptions, getBinlogColumnFamilyHandle(), sbegin, send);
@@ -1956,8 +1956,8 @@ std::shared_ptr<KeyCollectorFactory> NewKeyCollectorFactory() {
   return std::make_shared<KeyCollectorFactory>();
 }
 
-void RocksKVStore::bgCompact() {
-  rocksdb::TablePropertiesCollection props;
+void RocksKVStore::bgCompact() {  // 后台触发compaction
+  rocksdb::TablePropertiesCollection props;  // sst filename->property
   auto s = getBaseDB()->GetPropertiesOfAllTables(&props);  // default cf; 获取所有sst file
   if (!s.ok()) {
     LOG(WARNING) << "get table properties failed. dbid:" << dbId()
@@ -2011,7 +2011,7 @@ void RocksKVStore::bgCompact() {
     }
 
     double deleteRatio = static_cast<double>(it.second->num_deletions) /
-      static_cast<double>(it.second->num_entries);
+      static_cast<double>(it.second->num_entries);   // sstable key deleteRatio
     if (fileCreateTime < now - forceCompactAge &&
         (it.second->num_range_deletions ||
          deleteRatio >= forceDeletePercentage)) {
@@ -2105,7 +2105,7 @@ Expected<uint64_t> RocksKVStore::flush(Session* sess, uint64_t nextBinlogid) {
   s = clear();
   RET_IF_ERR(s);
 
-  auto ret = restart(false, nextBinlogid);
+  auto ret = restart(false, nextBinlogid);  // 重启
   if (!ret.ok()) {
     return ret.status();
   }
@@ -2124,7 +2124,7 @@ Expected<uint64_t> RocksKVStore::flush(Session* sess, uint64_t nextBinlogid) {
     return eptxn.status();
   }
   auto txn = std::move(eptxn.value());
-  s = txn->flushall();
+  s = txn->flushall();  // flush 命令写到binlog cf
   if (!s.ok()) {
     return s;
   }
@@ -2235,7 +2235,7 @@ Expected<uint64_t> RocksKVStore::restart(bool restore,
         dbname,
         _cfDescs,
         &_cfHandles,
-        &tmpDb);  // open two column_family in OptimisticTranDB
+        &tmpDb);  // open two column_family in OptimisticTranDB  每个kv store对应一个rocksdb
       if (!status.ok()) {
         if (tmpDb) {
           delete tmpDb;
@@ -2711,7 +2711,7 @@ Expected<std::unique_ptr<Transaction>> RocksKVStore::createTransaction(
 Status RocksKVStore::assignBinlogIdIfNeeded(Transaction* txn) {
   if (txn->getBinlogId() == Transaction::TXNID_UNINITED) {
     std::lock_guard<std::mutex> lk(_mutex);
-    uint64_t binlogId = _nextBinlogSeq++;
+    uint64_t binlogId = _nextBinlogSeq++;  // 设置binlog id
 
     txn->setBinlogId(binlogId);  // 分配binlog id
     INVARIANT_D(_aliveBinlogs.find(binlogId) == _aliveBinlogs.end());

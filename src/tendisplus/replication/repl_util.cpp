@@ -87,11 +87,11 @@ Expected<BinlogResult> masterSendBinlogV2(
 
   std::unique_ptr<Transaction> txn = std::move(ptxn.value());
   std::unique_ptr<RepllogCursorV2> cursor =
-    txn->createRepllogCursorV2(binlogPos + 1);
+    txn->createRepllogCursorV2(binlogPos + 1);  // binlogPos已经发送过了
 
   BinlogWriter writer(suggestBytes, suggestBatch);
   while (true) {
-    Expected<ReplLogRawV2> explog = cursor->next();
+    Expected<ReplLogRawV2> explog = cursor->next(); // 遍历binglog,一次发送多条数据
     if (explog.ok()) {
       if (explog.value().getChunkId() == Transaction::CHUNKID_FLUSH) {
         // flush binlog should be alone
@@ -118,7 +118,7 @@ Expected<BinlogResult> masterSendBinlogV2(
       br.binlogId = explog.value().getBinlogId();
       br.binlogTs = explog.value().getTimestamp();
 
-      if (writer.writeRepllogRaw(explog.value()) ||
+      if (writer.writeRepllogRaw(explog.value()) ||  // 超过size限制
           writer.getFlag() == BinlogFlag::FLUSH ||
           writer.getFlag() == BinlogFlag::MIGRATE) {
         // full or flush

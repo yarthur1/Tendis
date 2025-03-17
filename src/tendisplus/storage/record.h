@@ -174,7 +174,7 @@ class RecordKey {
   uint32_t _chunkId;
   uint32_t _dbId;
   RecordType _type;
-  RecordType _valueType;
+  RecordType _valueType;  // RecordType不能标记删除
   std::string _pk;
   std::string _sk;
   // version for subkey, it would be always 0 for *_META.
@@ -293,7 +293,7 @@ class RecordValue {
   // TODO(vinchen) it would be useful for append and bitmap
   // the whole value size, maybe > _value.size()
   uint64_t _totalSize;
-  std::string _value;  // 元素个数存放在string中，如何编码?
+  std::string _value;  // 元素个数存放在string中，如何编码? key删除应该在val中标记
 };
 
 class Record {
@@ -405,7 +405,7 @@ class ReplLogValueEntryV2 {  // 一个binlog对应多个ReplLogValueEntryV2
   bool operator==(const ReplLogValueEntryV2&) const;
 
  private:
-  ReplOp _op;
+  ReplOp _op;   // log里面记录的key set或者del
   uint64_t _timestamp;  // in milliseconds
   std::string _key;
   std::string _val;
@@ -536,7 +536,7 @@ class ReplLogV2 {  // 代表一个binlog
   // bool operator==(const ReplLog&) const;
 
  private:
-  ReplLogKeyV2 _key;
+  ReplLogKeyV2 _key;  // binglogid
   ReplLogValueV2 _val;
   std::vector<ReplLogValueEntryV2> _entrys;  // 从ReplLogValueV2中解析出
 };
@@ -638,7 +638,7 @@ class HashMetaValue {
   // uint64_t getCas() const;
 
  private:
-  uint64_t _count;
+  uint64_t _count;  // 元素个数
 };
 
 class SetMetaValue {
@@ -741,7 +741,7 @@ class ZSlMetaValue {
   uint64_t _posAlloc;
 };
 
-class ZSlEleValue {
+class ZSlEleValue {  // score->mem 跳表节点，zrank logn
  public:
   ZSlEleValue();
   // NOTE(vinchen): if we want to change maxLevel,
@@ -827,7 +827,7 @@ class TTLIndex {
   }
 
  private:
-  std::string _priKey;
+  std::string _priKey;  // 记录主key,作为后台删除时的索引
   RecordType _type;
   uint32_t _dbId;
   uint64_t _ttl;

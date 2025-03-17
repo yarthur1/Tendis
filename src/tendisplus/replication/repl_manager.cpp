@@ -538,7 +538,7 @@ void ReplManager::controlRoutine() {
     bool doSth = false;
     for (size_t i = 0; i < _pushStatus.size(); i++) {
       for (auto& mpov : _pushStatus[i]) {
-        if (mpov.second->isRunning || now < mpov.second->nextSchedTime) {
+        if (mpov.second->isRunning || now < mpov.second->nextSchedTime) {  // 
           continue;
         }
 
@@ -561,7 +561,7 @@ void ReplManager::controlRoutine() {
       doSth = true;
       _logRecycStatus[i]->isRunning = true;
 
-      _logRecycler->schedule([this, i]() { recycleBinlog(i); });
+      _logRecycler->schedule([this, i]() { recycleBinlog(i); });   // 回收binlog?
     }
     return doSth;
   };
@@ -736,7 +736,7 @@ void ReplManager::recycleBinlog(uint32_t storeId) {
   SCLOCK::time_point nextSched = SCLOCK::now();
   float randRatio = redis_port::random() % 40 / 100.0 + 0.80;  // 0.80 to 1.20
   uint32_t nextSchedInterval = _cfg->truncateBinlogIntervalMs * randRatio;
-  nextSched = nextSched + std::chrono::milliseconds(nextSchedInterval);
+  nextSched = nextSched + std::chrono::milliseconds(nextSchedInterval);  // 1000ms
 
   uint64_t start = Transaction::MIN_VALID_TXNID;
   uint64_t end = Transaction::MIN_VALID_TXNID;
