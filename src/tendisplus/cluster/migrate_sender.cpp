@@ -132,7 +132,7 @@ Status ChunkMigrateSender::sendChunk() {   // 每个kvstore 可以并行slot迁�
   unlockChunks();
   auto end = msSinceEpoch();
   _sendstate = MigrateSenderStatus::METACHANGE_DONE;
-
+  _svr->CloseChannelBySlot(_slots);
   serverLog(LL_NOTICE,
             "ChunkMigrateSender::sendChunk success"
             " [%s] [total used time:%lu] [snapshot time:%lu]"
@@ -298,9 +298,6 @@ Status ChunkMigrateSender::sendRangeByBatch(Transaction* txn,
             << end;
 
   {
-    auto guardStat = MakeGuard([this, &migratebatch, &totalNum] {
-      *totalNum += migratebatch.sendKVEntries();
-    });
     Status migrateStatus;
 
     while (true) {  // snapshot遍历时任然可以写入
@@ -327,12 +324,14 @@ Status ChunkMigrateSender::sendRangeByBatch(Transaction* txn,
       if (migratebatch.isFull()) {
         migrateStatus = migratebatch.send();  // 发送到dst 直接将数据写到连接里 不是repl binglog格式？
         RET_IF_ERR(migrateStatus);
+        *totalNum = migratebatch.sendKVEntries();
       }
     }
 
     // Send the last batch if need
     migrateStatus = migratebatch.send();
     RET_IF_ERR(migrateStatus);
+    *totalNum = migratebatch.sendKVEntries();
   }
 
   LOG(INFO) << "Migrate sendRange Batch end, migrate slot: " << begin << " - "
